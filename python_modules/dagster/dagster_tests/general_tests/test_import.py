@@ -1,4 +1,5 @@
 import subprocess
+import sys
 
 import pytest
 from dagster._utils import file_relative_path
@@ -93,7 +94,8 @@ def test_import_perf_component_cli():
     # import cost profiling output in stderr via "-X importtime"
     result = subprocess.run(
         [
-            "python",
+            # sys.executable to make sure all subsidiary libraries are available
+            sys.executable,
             "-X",
             "importtime",
             "-m",
