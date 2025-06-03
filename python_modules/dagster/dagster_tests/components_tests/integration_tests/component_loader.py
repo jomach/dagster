@@ -28,7 +28,7 @@ def load_test_component_defs(
             defs_module=importlib.import_module(f"{project_name}.defs"),
             project_root=src_path.parent.parent,
         )
-        yield tree.load_defs_at_path(Path(src_path.stem))
+        yield tree.build_defs_at_path(Path(src_path.stem))
 
 
 def sync_load_test_component_defs(
