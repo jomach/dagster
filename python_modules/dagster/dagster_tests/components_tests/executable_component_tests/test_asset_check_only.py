@@ -11,7 +11,7 @@ from dagster._core.definitions.metadata.metadata_value import TextMetadataValue
 from dagster._core.definitions.resource_annotation import ResourceParam
 from dagster._core.definitions.result import MaterializeResult
 from dagster._core.definitions.unresolved_asset_job_definition import define_asset_job
-from dagster.components.core.context import ComponentLoadContext
+from dagster.components.core.tree import ComponentTree
 from dagster.components.lib.executable_component.component import ExecutableComponent
 from dagster_shared import check
 
@@ -70,7 +70,7 @@ def test_execute_asset_with_check() -> None:
         }
     )
 
-    defs = component.build_defs(ComponentLoadContext.for_test())
+    defs = component.build_defs(ComponentTree.for_test().load_context)
 
     assets_def = defs.get_assets_def("asset")
     assert assets_def
@@ -115,7 +115,7 @@ def test_standalone_asset_check() -> None:
     assert component.checks[0].name == "check_name"
     assert isinstance(component.execute_fn(None), AssetCheckResult)
 
-    defs = component.build_defs(ComponentLoadContext.for_test())
+    defs = component.build_defs(ComponentTree.for_test().load_context)
     assert defs.asset_checks
     asset_checks_def = next(iter(defs.asset_checks))
     assert isinstance(asset_checks_def, AssetChecksDefinition)
@@ -150,7 +150,7 @@ def test_standalone_asset_check_with_resources() -> None:
         }
     )
 
-    defs = component.build_defs(ComponentLoadContext.for_test())
+    defs = component.build_defs(ComponentTree.for_test().load_context)
 
     asset_checks_def = next(iter(defs.asset_checks or []))
     assert isinstance(asset_checks_def, AssetChecksDefinition)

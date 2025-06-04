@@ -36,7 +36,7 @@ def test_definitions_decorator_with_context():
         assert isinstance(context, ComponentLoadContext)
         return Definitions(assets=[AssetSpec(key="asset1")])
 
-    context = ComponentLoadContext.for_test()
+    context = ComponentTree.for_test().load_context
     result = my_defs_with_context(context)
     assert isinstance(result, Definitions)
     assets = list(result.assets or [])
@@ -86,7 +86,7 @@ def test_definitions_decorator_with_context_using_context():
             ]
         )
 
-    context = ComponentLoadContext.for_test()
+    context = ComponentTree.for_test().load_context
     result = my_defs_with_context(context)
     assert isinstance(result, Definitions)
     assets = list(result.assets or [])

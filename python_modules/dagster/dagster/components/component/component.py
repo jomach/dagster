@@ -16,6 +16,7 @@ from dagster._core.definitions.metadata.source_code import CodeReference, LocalF
 from dagster._core.definitions.utils import validate_component_owner
 from dagster.components.component.component_scaffolder import DefaultComponentScaffolder
 from dagster.components.component.template_vars import get_static_template_vars
+from dagster.components.core.tree import ComponentTree
 from dagster.components.resolved.base import Resolvable
 from dagster.components.scaffold.scaffold import scaffold_with
 
@@ -171,12 +172,10 @@ class Component(ABC):
         Returns:
             A Component instance.
         """
-        from dagster.components.core.context import ComponentLoadContext
-
         model_cls = cls.get_model_cls()
         assert model_cls
         model = TypeAdapter(model_cls).validate_python(attributes)
-        return cls.load(model, context if context else ComponentLoadContext.for_test())
+        return cls.load(model, context if context else ComponentTree.for_test().load_context)
 
     @classmethod
     def from_yaml_path(
@@ -191,9 +190,8 @@ class Component(ABC):
         Returns:
             A Component instance.
         """
-        from dagster.components.core.context import ComponentLoadContext
         from dagster.components.core.defs_module import load_yaml_component_from_path
 
         return load_yaml_component_from_path(
-            context=context or ComponentLoadContext.for_test(), component_def_path=yaml_path
+            context=context or ComponentTree.for_test().load_context, component_def_path=yaml_path
         )

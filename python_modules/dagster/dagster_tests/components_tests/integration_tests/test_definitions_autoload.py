@@ -5,8 +5,8 @@ import pytest
 from dagster import AssetKey, Definitions, load_defs
 from dagster._core.errors import DagsterInvalidDefinitionError
 from dagster._utils.env import environ
-from dagster.components.core.context import ComponentLoadContext
 from dagster.components.core.defs_module import CompositeYamlComponent, DefsFolderComponent
+from dagster.components.core.tree import ComponentTree
 from dagster.components.testing import get_underlying_component
 from dagster_shared import check
 from pydantic import ValidationError
@@ -152,7 +152,7 @@ def test_ignored_empty_dir():
     src_path = Path(path_str)
     with create_project_from_components(path_str) as (project_root, project_name):
         module = importlib.import_module(f"{project_name}.defs.{src_path.stem}")
-        context = ComponentLoadContext.for_module(module, project_root)
+        context = ComponentTree(defs_module=module, project_root=project_root).load_context
         defs_root = check.inst(get_underlying_component(context), DefsFolderComponent)
         for comp in defs_root.iterate_components():
             if isinstance(comp, DefsFolderComponent):

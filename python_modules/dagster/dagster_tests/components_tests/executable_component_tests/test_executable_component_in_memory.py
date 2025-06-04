@@ -8,7 +8,7 @@ from dagster._core.definitions.materialize import materialize
 from dagster._core.definitions.metadata.metadata_value import TextMetadataValue
 from dagster._core.definitions.resource_annotation import ResourceParam
 from dagster._core.definitions.result import MaterializeResult
-from dagster.components.core.context import ComponentLoadContext
+from dagster.components.core.tree import ComponentTree
 from dagster.components.lib.executable_component.component import ExecutableComponent
 from dagster.components.testing import scaffold_defs_sandbox
 
@@ -16,7 +16,7 @@ from dagster.components.testing import scaffold_defs_sandbox
 def asset_in_component(
     component: ExecutableComponent, key: CoercibleToAssetKey
 ) -> AssetsDefinition:
-    defs = component.build_defs(ComponentLoadContext.for_test())
+    defs = component.build_defs(ComponentTree.for_test().load_context)
     return defs.get_assets_def(key)
 
 
@@ -39,7 +39,7 @@ def test_basic_singular_asset() -> None:
 
 
 def assert_singular_component(component: ExecutableComponent) -> None:
-    defs = component.build_defs(ComponentLoadContext.for_test())
+    defs = component.build_defs(ComponentTree.for_test().load_context)
 
     assets_def = defs.get_assets_def("asset")
 

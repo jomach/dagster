@@ -14,6 +14,8 @@ from dagster.components.component.component import Component
 from dagster.components.core.context import ComponentLoadContext
 from dagster.components.core.decl import ComponentDecl, DefsFolderDecl
 from dagster.components.core.defs_module import ComponentPath, DefsFolderComponent
+from dagster.components.resolved.context import ResolutionContext
+from dagster.components.utils import get_path_from_module
 
 PLUGIN_COMPONENT_TYPES_JSON_METADATA_KEY = "plugin_component_types_json"
 
@@ -30,6 +32,16 @@ def _get_canonical_path_string(root_path: Path, path: Path) -> str:
 class ComponentTree:
     defs_module: ModuleType
     project_root: Path
+    terminate_autoloading_on_keyword_files: bool = True
+
+    @staticmethod
+    def for_test() -> "ComponentTree":
+        defs_module = importlib.import_module(".")
+        return ComponentTree(
+            defs_module=defs_module,
+            project_root=Path.cwd(),
+            terminate_autoloading_on_keyword_files=True,
+        )
 
     @staticmethod
     def load(path_within_project: Path) -> "ComponentTree":
@@ -44,12 +56,20 @@ class ComponentTree:
         return ComponentTree(
             defs_module=importlib.import_module(dg_context.defs_module_name),
             project_root=dg_context.root_path,
+            terminate_autoloading_on_keyword_files=True,
         )
 
     @cached_property
     def load_context(self):
-        return ComponentLoadContext.for_module(
-            defs_module=self.defs_module, project_root=self.project_root
+        path = get_path_from_module(self.defs_module)
+        return ComponentLoadContext(
+            path=path,
+            project_root=self.project_root,
+            defs_module_path=path,
+            defs_module_name=self.defs_module.__name__,
+            resolution_context=ResolutionContext.default(),
+            terminate_autoloading_on_keyword_files=self.terminate_autoloading_on_keyword_files,
+            component_tree=self,
         )
 
     @cached_property
