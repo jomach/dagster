@@ -64,7 +64,10 @@ class CompositePythonDecl(ComponentDecl[CompositeComponent]):
 
     def _load_component(self) -> "CompositeComponent":
         return CompositeComponent(
-            components={attr: decl._load_component() for attr, decl in self.decls.items()}  # noqa: SLF001
+            components={
+                attr: self.context.component_tree.load_component_at_path(decl.context.path)
+                for attr, decl in self.decls.items()
+            }
         )
 
 

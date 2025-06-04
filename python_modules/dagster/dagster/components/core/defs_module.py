@@ -285,12 +285,6 @@ class DagsterDefsComponent(Component):
         return load_definitions_from_module(module)
 
 
-def load_pythonic_component(context: ComponentLoadContext) -> Component:
-    from dagster.components.core.decl import get_component_decl_from_python_file
-
-    return get_component_decl_from_python_file(context)._load_component()  # noqa: SLF001
-
-
 def invoke_inline_template_var(context: ComponentLoadContext, tv: Callable) -> Any:
     sig = inspect.signature(tv)
     if len(sig.parameters) == 1:
@@ -302,9 +296,7 @@ def invoke_inline_template_var(context: ComponentLoadContext, tv: Callable) -> A
 
 
 def load_yaml_component_from_path(context: ComponentLoadContext, component_def_path: Path):
-    from dagster.components.core.decl import get_component_decl_from_yaml_file
-
-    return get_component_decl_from_yaml_file(context, component_def_path)._load_component()  # noqa: SLF001
+    return context.component_tree.load_component_at_path(component_def_path)
 
 
 # When we remove component.yaml, we can remove this function for just a defs.yaml check
