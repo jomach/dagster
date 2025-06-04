@@ -811,8 +811,11 @@ def test_merge():
     def logger2(_):
         raise Exception("not executed")
 
+    mock_module = Mock()
+    mock_module.__file__ = Path()
+    mock_module.__name__ = "mock_module"
     origin = ComponentTree.from_module(
-        defs_module=Mock(),
+        defs_module=mock_module,
         project_root=Path(),
     )
 
