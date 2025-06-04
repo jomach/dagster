@@ -192,7 +192,7 @@ class DefsPathSandbox:
 
             try:
                 module = importlib.import_module(module_path)
-                context = ComponentTree(
+                context = ComponentTree.from_module(
                     defs_module=module,
                     project_root=self.project_root,
                     terminate_autoloading_on_keyword_files=False,

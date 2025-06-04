@@ -24,7 +24,7 @@ def load_test_component_defs(
     with create_project_from_components(
         str(src_path), local_component_defn_to_inject=local_component_defn_to_inject
     ) as (_, project_name):
-        tree = ComponentTree(
+        tree = ComponentTree.from_module(
             defs_module=importlib.import_module(f"{project_name}.defs"),
             project_root=src_path.parent.parent,
         )

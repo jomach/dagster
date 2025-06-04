@@ -30,17 +30,32 @@ def _get_canonical_path_string(root_path: Path, path: Path) -> str:
     checked=False,  # cant handle ModuleType
 )
 class ComponentTree:
-    defs_module: ModuleType
+    path: Path
+    defs_module_name: str
     project_root: Path
     terminate_autoloading_on_keyword_files: bool = True
 
     @staticmethod
     def for_test() -> "ComponentTree":
-        defs_module = importlib.import_module(".")
         return ComponentTree(
-            defs_module=defs_module,
+            path=Path.cwd(),
+            defs_module_name="test",
             project_root=Path.cwd(),
             terminate_autoloading_on_keyword_files=True,
+        )
+
+    @staticmethod
+    def from_module(
+        defs_module: ModuleType,
+        project_root: Path,
+        terminate_autoloading_on_keyword_files: bool = True,
+    ) -> "ComponentTree":
+        path = get_path_from_module(defs_module)
+        return ComponentTree(
+            path=path,
+            defs_module_name=defs_module.__name__,
+            project_root=project_root,
+            terminate_autoloading_on_keyword_files=terminate_autoloading_on_keyword_files,
         )
 
     @staticmethod
@@ -53,20 +68,23 @@ class ComponentTree:
         # replace with dagster_shared impl of path crawl and config resolution
         dg_context = DgContext.for_project_environment(path_within_project, command_line_config={})
 
+        defs_module = importlib.import_module(dg_context.defs_module_name)
+        path = get_path_from_module(defs_module)
+
         return ComponentTree(
-            defs_module=importlib.import_module(dg_context.defs_module_name),
+            path=path,
+            defs_module_name=dg_context.defs_module_name,
             project_root=dg_context.root_path,
             terminate_autoloading_on_keyword_files=True,
         )
 
     @cached_property
     def load_context(self):
-        path = get_path_from_module(self.defs_module)
         return ComponentLoadContext(
-            path=path,
+            path=self.path,
             project_root=self.project_root,
-            defs_module_path=path,
-            defs_module_name=self.defs_module.__name__,
+            defs_module_path=self.path,
+            defs_module_name=self.defs_module_name,
             resolution_context=ResolutionContext.default(),
             terminate_autoloading_on_keyword_files=self.terminate_autoloading_on_keyword_files,
             component_tree=self,

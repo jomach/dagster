@@ -811,7 +811,7 @@ def test_merge():
     def logger2(_):
         raise Exception("not executed")
 
-    origin = ComponentTree(
+    origin = ComponentTree.from_module(
         defs_module=Mock(),
         project_root=Path(),
     )

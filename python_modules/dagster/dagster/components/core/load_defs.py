@@ -83,7 +83,7 @@ def load_defs(
     project_root = project_root if project_root else get_project_root(defs_root)
 
     # create a top-level DefsModule component from the root module
-    context = ComponentTree(
+    context = ComponentTree.from_module(
         defs_module=defs_root,
         project_root=project_root,
         terminate_autoloading_on_keyword_files=terminate_autoloading_on_keyword_files,
@@ -97,7 +97,7 @@ def load_defs(
 
     # If we did get a folder component back, assume its the root tree
     tree = (
-        ComponentTree(defs_module=defs_root, project_root=project_root)
+        ComponentTree.from_module(defs_module=defs_root, project_root=project_root)
         if isinstance(root_component, DefsFolderComponent)
         else None
     )
