@@ -72,7 +72,8 @@ class ComponentTree:
     @cached_method
     def _component_decl_tree(self) -> Sequence[tuple[ComponentPath, ComponentDecl]]:
         """Constructs or returns the full component declaration tree from cache."""
-        return list(self.root_node.iterate_path_component_decl_pairs())
+        tree = list(self.root_node.iterate_path_component_decl_pairs())
+        return tree
 
     @cached_method
     def _component_decl_at_posix_path(
@@ -86,11 +87,11 @@ class ComponentTree:
         return None
 
     @cached_method
-    def _component_at_posix_path(self, defs_path_posix: str) -> Optional[Component]:
+    def _component_at_posix_path(self, defs_path_posix: str) -> Optional[tuple[Path, Component]]:
         component_decl_and_path = self._component_decl_at_posix_path(defs_path_posix)
         if component_decl_and_path:
             path, component_decl = component_decl_and_path
-            return component_decl._load_component()  # noqa: SLF001
+            return (path, component_decl._load_component())  # noqa: SLF001
         return None
 
     @cached_method
@@ -98,7 +99,8 @@ class ComponentTree:
         component = self._component_at_posix_path(defs_path_posix)
         if component is None:
             return None
-        return component.build_defs(self.load_context)
+        path, component = component
+        return component.build_defs(self.load_context.for_path(path))
 
     def load_decl_at_path(self, defs_path: Path) -> ComponentDecl:
         """Loads a component declaration from the given path.
@@ -130,6 +132,7 @@ class ComponentTree:
         )
         if component is None:
             raise Exception(f"No component found for path {defs_path}")
+        path, component = component
         return component
 
     def build_defs_at_path(self, defs_path: Path) -> Definitions:
