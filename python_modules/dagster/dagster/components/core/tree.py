@@ -13,7 +13,11 @@ from dagster._core.definitions.definitions_class import Definitions
 from dagster._utils.cached_method import cached_method
 from dagster.components.component.component import Component
 from dagster.components.core.context import ComponentLoadContext
-from dagster.components.core.decl import ComponentDecl, DefsFolderDecl, get_component_decl
+from dagster.components.core.decl import (
+    ComponentDecl,
+    ComponentDeclWithChildren,
+    get_component_decl,
+)
 from dagster.components.core.defs_module import ComponentPath, DefsFolderComponent
 from dagster.components.resolved.context import ResolutionContext
 from dagster.components.utils import get_path_from_module
@@ -119,16 +123,18 @@ class ComponentTree:
     @cached_method
     def _component_decl_tree(self) -> Sequence[tuple[ComponentPath, ComponentDecl]]:
         """Constructs or returns the full component declaration tree from cache."""
-        if not isinstance(self.root_node, DefsFolderDecl):
-            raise Exception("Root component is not a DefsFolderComponent")
+        if not isinstance(self.root_node, ComponentDeclWithChildren):
+            raise Exception("Root component is not a ComponentDeclWithChildren")
         return list(self.root_node.iterate_path_component_decl_pairs())
 
     @cached_method
     def _component_decl_at_posix_path(
         self, defs_path_posix: str, instance_key: Optional[Union[int, str]]
     ) -> Optional[tuple[Path, ComponentDecl]]:
-        if self.path.absolute().as_posix() == defs_path_posix:
+        if self.path.absolute().as_posix() == defs_path_posix and instance_key is None:
             return (self.path, self.root_node)
+        tree = self._component_decl_tree()
+        print(tree)
         for cp, component_decl in self._component_decl_tree():
             if (
                 cp.file_path.absolute().as_posix() == defs_path_posix

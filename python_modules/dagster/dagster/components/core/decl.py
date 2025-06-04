@@ -40,8 +40,18 @@ class ComponentDecl(abc.ABC, Generic[T]):
     """
 
     @abc.abstractmethod
-    def _load_component(self) -> T:
-        pass
+    def _load_component(self) -> T: ...
+
+
+class ComponentDeclWithChildren(ComponentDecl[T]):
+    def iterate_component_decls(self) -> Iterator[ComponentDecl]:
+        for _, component in self.iterate_path_component_decl_pairs():
+            yield component
+
+    @abc.abstractmethod
+    def iterate_path_component_decl_pairs(
+        self,
+    ) -> Iterator[tuple[ComponentPath, ComponentDecl]]: ...
 
 
 class ComponentLoaderDecl(ComponentDecl[Component]):
@@ -59,7 +69,7 @@ class ComponentLoaderDecl(ComponentDecl[Component]):
         return self.component_node(self.context)
 
 
-class CompositePythonDecl(ComponentDecl[CompositeComponent]):
+class CompositePythonDecl(ComponentDeclWithChildren[CompositeComponent]):
     def __init__(self, context: ComponentLoadContext, decls: Mapping[str, ComponentLoaderDecl]):
         self.context = context
         self.decls = decls
@@ -72,18 +82,28 @@ class CompositePythonDecl(ComponentDecl[CompositeComponent]):
             }
         )
 
+    def iterate_path_component_decl_pairs(
+        self,
+    ) -> Iterator[tuple[ComponentPath, ComponentDecl]]:
+        for decl in self.decls.values():
+            yield decl.path, decl
+
 
 class YamlDecl(ComponentDecl):
     @staticmethod
     def from_source_tree(
         context: ComponentLoadContext,
         source_tree: ValueAndSourcePositionTree,
+        path: ComponentPath,
     ) -> "YamlDecl":
         component_file_model = _parse_and_populate_model_with_annotated_errors(
             cls=ComponentFileModel, obj_parse_root=source_tree, obj_key_path_prefix=[]
         )
         return YamlDecl(
-            context=context, source_tree=source_tree, component_file_model=component_file_model
+            context=context,
+            source_tree=source_tree,
+            component_file_model=component_file_model,
+            path=path,
         )
 
     def __init__(
@@ -91,10 +111,12 @@ class YamlDecl(ComponentDecl):
         context: ComponentLoadContext,
         source_tree: ValueAndSourcePositionTree,
         component_file_model: ComponentFileModel,
+        path: ComponentPath,
     ):
         self.context = context
         self.source_tree = source_tree
         self.component_file_model = component_file_model
+        self.path = path
 
     def _load_component(self) -> "Component":
         # find the component type
@@ -135,7 +157,7 @@ class YamlDecl(ComponentDecl):
         return obj.load(attributes, context)
 
 
-class CompositeYamlDecl(ComponentDecl[CompositeYamlComponent]):
+class CompositeYamlDecl(ComponentDeclWithChildren[CompositeYamlComponent]):
     def __init__(
         self,
         context: ComponentLoadContext,
@@ -148,9 +170,17 @@ class CompositeYamlDecl(ComponentDecl[CompositeYamlComponent]):
 
     def _load_component(self) -> "CompositeYamlComponent":
         return CompositeYamlComponent(
-            components=[decl._load_component() for decl in self.decls],  # noqa: SLF001
+            components=[
+                self.context.component_tree.load_component_at_path(decl.path) for decl in self.decls
+            ],
             source_positions=self.source_positions,
         )
+
+    def iterate_path_component_decl_pairs(
+        self,
+    ) -> Iterator[tuple[ComponentPath, ComponentDecl]]:
+        for decl in self.decls:
+            yield decl.path, decl
 
 
 class DagsterDefsDecl(ComponentDecl[DagsterDefsComponent]):
@@ -161,7 +191,7 @@ class DagsterDefsDecl(ComponentDecl[DagsterDefsComponent]):
         return DagsterDefsComponent(path=self.path)
 
 
-class DefsFolderDecl(ComponentDecl[DefsFolderComponent]):
+class DefsFolderDecl(ComponentDeclWithChildren[DefsFolderComponent]):
     def __init__(
         self, context: ComponentLoadContext, path: Path, children: Mapping[Path, ComponentDecl]
     ):
@@ -184,26 +214,14 @@ class DefsFolderDecl(ComponentDecl[DefsFolderComponent]):
             asset_post_processors=None,
         )
 
-    def iterate_component_decls(self) -> Iterator[ComponentDecl]:
-        for _, component in self.iterate_path_component_decl_pairs():
-            yield component
-
     def iterate_path_component_decl_pairs(
         self,
     ) -> Iterator[tuple[ComponentPath, ComponentDecl]]:
         for path, component_node in self.children.items():
             yield ComponentPath(file_path=path), component_node
 
-            if isinstance(component_node, DefsFolderDecl):
+            if isinstance(component_node, ComponentDeclWithChildren):
                 yield from component_node.iterate_path_component_decl_pairs()
-
-            if isinstance(component_node, CompositeYamlDecl):
-                for idx, inner_comp in enumerate(component_node.decls):
-                    yield ComponentPath(file_path=path, instance_key=idx), inner_comp
-
-            if isinstance(component_node, CompositePythonDecl):
-                for attr, inner_comp in component_node.decls.items():
-                    yield ComponentPath(file_path=path, instance_key=attr), inner_comp
 
 
 def get_component_decl(context: ComponentLoadContext) -> Optional[ComponentDecl]:
@@ -297,8 +315,15 @@ def get_component_decl_from_yaml_file(
         component_def_path.read_text(), str(component_def_path)
     )
     component_nodes = []
-    for source_tree in source_trees:
-        component_nodes.append(YamlDecl.from_source_tree(context=context, source_tree=source_tree))
+    for i, source_tree in enumerate(source_trees):
+        print(context.path, i)
+        component_nodes.append(
+            YamlDecl.from_source_tree(
+                context=context,
+                source_tree=source_tree,
+                path=ComponentPath(file_path=context.path, instance_key=i),
+            )
+        )
 
     check.invariant(len(component_nodes) > 0, "No components found in YAML file")
     return CompositeYamlDecl(
