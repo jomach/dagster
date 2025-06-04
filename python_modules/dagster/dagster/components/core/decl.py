@@ -48,9 +48,11 @@ class ComponentLoaderDecl(ComponentDecl[Component]):
     def __init__(
         self,
         context: ComponentLoadContext,
+        path: ComponentPath,
         component_node_fn: Callable[[ComponentLoadContext], Component],
     ):
         self.context = context
+        self.path = path
         self.component_node = component_node_fn
 
     def _load_component(self) -> Component:
@@ -65,7 +67,7 @@ class CompositePythonDecl(ComponentDecl[CompositeComponent]):
     def _load_component(self) -> "CompositeComponent":
         return CompositeComponent(
             components={
-                attr: self.context.component_tree.load_component_at_path(decl.context.path)
+                attr: self.context.component_tree.load_component_at_path(decl.path)
                 for attr, decl in self.decls.items()
             }
         )
@@ -264,12 +266,20 @@ def get_component_decl_from_python_file(
         raise DagsterInvalidDefinitionError("No component nodes found in module")
     elif len(component_loaders) == 1:
         _, component_loader = component_loaders[0]
-        return ComponentLoaderDecl(context=context, component_node_fn=component_loader)
+        return ComponentLoaderDecl(
+            context=context,
+            component_node_fn=component_loader,
+            path=ComponentPath(file_path=context.path, instance_key=None),
+        )
     else:
         return CompositePythonDecl(
             context=context,
             decls={
-                attr: ComponentLoaderDecl(context=context, component_node_fn=component_loader)
+                attr: ComponentLoaderDecl(
+                    context=context,
+                    component_node_fn=component_loader,
+                    path=ComponentPath(file_path=context.path, instance_key=attr),
+                )
                 for attr, component_loader in component_loaders
             },
         )

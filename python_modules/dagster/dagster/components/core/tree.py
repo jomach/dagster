@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from functools import cached_property
 from pathlib import Path
 from types import ModuleType
-from typing import Optional
+from typing import Optional, Union
 
 from dagster_shared import check
 from dagster_shared.record import record
@@ -25,6 +25,14 @@ TComponent = TypeVar("TComponent", bound=Component)
 
 def _get_canonical_path_string(root_path: Path, path: Path) -> str:
     return (root_path / path if not path.is_absolute() else path).absolute().as_posix()
+
+
+def _get_canonical_component_path(
+    root_path: Path, path: Union[Path, ComponentPath]
+) -> tuple[str, Optional[Union[int, str]]]:
+    if isinstance(path, ComponentPath):
+        return _get_canonical_path_string(root_path, path.file_path), path.instance_key
+    return _get_canonical_path_string(root_path, path), None
 
 
 @record(
@@ -117,32 +125,39 @@ class ComponentTree:
 
     @cached_method
     def _component_decl_at_posix_path(
-        self, defs_path_posix: str
+        self, defs_path_posix: str, instance_key: Optional[Union[int, str]]
     ) -> Optional[tuple[Path, ComponentDecl]]:
         if self.path.absolute().as_posix() == defs_path_posix:
             return (self.path, self.root_node)
         for cp, component_decl in self._component_decl_tree():
-            if cp.file_path.absolute().as_posix() == defs_path_posix:
+            if (
+                cp.file_path.absolute().as_posix() == defs_path_posix
+                and cp.instance_key == instance_key
+            ):
                 return (cp.file_path, component_decl)
         return None
 
     @cached_method
-    def _component_at_posix_path(self, defs_path_posix: str) -> Optional[tuple[Path, Component]]:
-        component_decl_and_path = self._component_decl_at_posix_path(defs_path_posix)
+    def _component_at_posix_path(
+        self, defs_path_posix: str, instance_key: Optional[Union[int, str]]
+    ) -> Optional[tuple[Path, Component]]:
+        component_decl_and_path = self._component_decl_at_posix_path(defs_path_posix, instance_key)
         if component_decl_and_path:
             path, component_decl = component_decl_and_path
             return (path, component_decl._load_component())  # noqa: SLF001
         return None
 
     @cached_method
-    def _defs_at_posix_path(self, defs_path_posix: str) -> Optional[Definitions]:
-        component = self._component_at_posix_path(defs_path_posix)
+    def _defs_at_posix_path(
+        self, defs_path_posix: str, instance_key: Optional[Union[int, str]]
+    ) -> Optional[Definitions]:
+        component = self._component_at_posix_path(defs_path_posix, instance_key)
         if component is None:
             return None
         path, component = component
         return component.build_defs(self.load_context.for_path(path))
 
-    def load_decl_at_path(self, defs_path: Path) -> ComponentDecl:
+    def load_decl_at_path(self, defs_path: Union[Path, ComponentPath]) -> ComponentDecl:
         """Loads a component declaration from the given path.
 
         Args:
@@ -152,13 +167,13 @@ class ComponentTree:
             ComponentDecl: The component declaration loaded from the given path.
         """
         component_decl_and_path = self._component_decl_at_posix_path(
-            _get_canonical_path_string(self.path, defs_path)
+            *_get_canonical_component_path(self.path, defs_path)
         )
         if component_decl_and_path is None:
             raise Exception(f"No component decl found for path {defs_path}")
         return component_decl_and_path[1]
 
-    def load_component_at_path(self, defs_path: Path) -> Component:
+    def load_component_at_path(self, defs_path: Union[Path, ComponentPath]) -> Component:
         """Loads a component from the given path.
 
         Args:
@@ -167,13 +182,15 @@ class ComponentTree:
         Returns:
             Component: The component loaded from the given path.
         """
-        component = self._component_at_posix_path(_get_canonical_path_string(self.path, defs_path))
+        component = self._component_at_posix_path(
+            *_get_canonical_component_path(self.path, defs_path)
+        )
         if component is None:
             raise Exception(f"No component found for path {defs_path}")
         path, component = component
         return component
 
-    def build_defs_at_path(self, defs_path: Path) -> Definitions:
+    def build_defs_at_path(self, defs_path: Union[Path, ComponentPath]) -> Definitions:
         """Builds definitions from the given defs subdirectory. Currently
         does not incorporate postprocessing from parent defs modules.
 
@@ -183,7 +200,7 @@ class ComponentTree:
         Returns:
             Definitions: The definitions loaded from the given path.
         """
-        defs = self._defs_at_posix_path(_get_canonical_path_string(self.path, defs_path))
+        defs = self._defs_at_posix_path(*_get_canonical_component_path(self.path, defs_path))
         if defs is None:
             raise Exception(f"No definitions found for path {defs_path}")
         return defs
