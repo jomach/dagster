@@ -316,7 +316,6 @@ def get_component_decl_from_yaml_file(
     )
     component_nodes = []
     for i, source_tree in enumerate(source_trees):
-        print(context.path, i)
         component_nodes.append(
             YamlDecl.from_source_tree(
                 context=context,

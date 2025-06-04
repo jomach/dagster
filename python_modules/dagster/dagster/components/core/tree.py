@@ -133,8 +133,6 @@ class ComponentTree:
     ) -> Optional[tuple[Path, ComponentDecl]]:
         if self.path.absolute().as_posix() == defs_path_posix and instance_key is None:
             return (self.path, self.root_node)
-        tree = self._component_decl_tree()
-        print(tree)
         for cp, component_decl in self._component_decl_tree():
             if (
                 cp.file_path.absolute().as_posix() == defs_path_posix
