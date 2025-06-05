@@ -1,7 +1,7 @@
 import importlib
 import inspect
 from functools import cached_property
-from typing import Annotated, Any, Callable, Optional, Union
+from typing import Annotated, Any, Callable, Literal, Optional, Union
 
 from dagster_shared import check
 from typing_extensions import TypeAlias
@@ -17,6 +17,9 @@ from dagster._core.execution.context.asset_check_execution_context import AssetC
 from dagster._core.execution.context.asset_execution_context import AssetExecutionContext
 from dagster.components.component.component import Component
 from dagster.components.core.context import ComponentLoadContext
+from dagster.components.lib.executable_component.pipe_subprocess_invoke import (
+    invoke_pipes_subprocess_script,
+)
 from dagster.components.resolved.base import Resolvable
 from dagster.components.resolved.context import ResolutionContext
 from dagster.components.resolved.core_models import ResolvedAssetCheckSpec, ResolvedAssetSpec
@@ -45,13 +48,22 @@ def get_resources_from_callable(func: Callable) -> list[str]:
     return [param.name for param in sig.parameters.values() if param.name != "context"]
 
 
-class ExecutionSpec(Model, Resolvable):
-    # inferred from the function name if not provided
+class OpMetadataSpec(Model, Resolvable):
     name: Optional[str] = None
+    type: Literal["function", "subprocess"]
     tags: Optional[dict[str, Any]] = None
     description: Optional[str] = None
     pool: Optional[str] = None
+
+
+class ExecutionSpec(OpMetadataSpec):
+    type: Literal["function"] = "function"
     fn: ResolvableCallable
+
+
+class PipesSubprocessSpec(OpMetadataSpec):
+    type: Literal["subprocess"] = "subprocess"
+    path: str
 
 
 class ExecutableComponent(Component, Resolvable, Model):
@@ -67,27 +79,35 @@ class ExecutableComponent(Component, Resolvable, Model):
     which can all be expressed as a single ExecutableComponent.
     """
 
-    execution: Union[ExecutionSpec, ResolvableCallable]
+    execution: Union[ExecutionSpec, ResolvableCallable, PipesSubprocessSpec]
     assets: Optional[list[ResolvedAssetSpec]] = None
     checks: Optional[list[ResolvedAssetCheckSpec]] = None
 
     @cached_property
-    def resolved_execution(self) -> ExecutionSpec:
+    def resolved_execution(self) -> OpMetadataSpec:
         return (
             self.execution
-            if isinstance(self.execution, ExecutionSpec)
+            if isinstance(self.execution, OpMetadataSpec)
             else ExecutionSpec(name=self.execution.__name__, fn=self.execution)
         )
 
     @cached_property
     def execute_fn_metadata(self) -> "ExecuteFnMetadata":
-        return ExecuteFnMetadata(self.resolved_execution.fn)
+        check.invariant(
+            isinstance(self.resolved_execution, ExecutionSpec),
+            "Pipes subprocess scripts cannot have resources",
+        )
+        return ExecuteFnMetadata(check.inst(self.resolved_execution, ExecutionSpec).fn)
 
     @cached_property
     def resource_keys(self) -> set[str]:
+        if not isinstance(self.resolved_execution, ExecutionSpec):
+            return set()
         return self.execute_fn_metadata.resource_keys
 
-    def build_underlying_assets_def(self) -> AssetsDefinition:
+    def build_underlying_assets_def(
+        self, component_load_context: ComponentLoadContext
+    ) -> AssetsDefinition:
         if self.assets:
 
             @multi_asset(
@@ -100,7 +120,9 @@ class ExecutableComponent(Component, Resolvable, Model):
                 pool=self.resolved_execution.pool,
             )
             def _assets_def(context: AssetExecutionContext, **kwargs):
-                return self.invoke_execute_fn(context)
+                return self.invoke_execute_fn(
+                    context, component_load_context=component_load_context
+                )
 
             return _assets_def
         elif self.checks:
@@ -114,26 +136,40 @@ class ExecutableComponent(Component, Resolvable, Model):
                 pool=self.resolved_execution.pool,
             )
             def _asset_check_def(context: AssetCheckExecutionContext, **kwargs):
-                return self.invoke_execute_fn(context)
+                return self.invoke_execute_fn(
+                    context, component_load_context=component_load_context
+                )
 
             return _asset_check_def
 
         check.failed("No assets or checks provided")
 
     def build_defs(self, context: ComponentLoadContext) -> Definitions:
-        assets_def = self.build_underlying_assets_def()
+        assets_def = self.build_underlying_assets_def(component_load_context=context)
         if isinstance(assets_def, AssetChecksDefinition):
             return Definitions(asset_checks=[assets_def])
         else:
             return Definitions(assets=[assets_def])
 
     def invoke_execute_fn(
-        self, context: Union[AssetExecutionContext, AssetCheckExecutionContext]
+        self,
+        context: Union[AssetExecutionContext, AssetCheckExecutionContext],
+        component_load_context: ComponentLoadContext,
     ) -> Any:
         rd = context.resources.original_resource_dict
         to_pass = {k: v for k, v in rd.items() if k in self.resource_keys}
         check.invariant(set(to_pass.keys()) == self.resource_keys, "Resource keys mismatch")
-        return self.resolved_execution.fn(context, **to_pass)
+        if isinstance(self.resolved_execution, ExecutionSpec):
+            return self.resolved_execution.fn(context, **to_pass)
+        elif isinstance(self.resolved_execution, PipesSubprocessSpec):
+            return invoke_pipes_subprocess_script(
+                self,
+                context,
+                self.resolved_execution.path,
+                component_load_context=component_load_context,
+            )
+        else:
+            check.failed(f"Unknown execution type: {self.resolved_execution}")
 
 
 class ExecuteFnMetadata:
