@@ -49,8 +49,8 @@ def get_resources_from_callable(func: Callable) -> list[str]:
 
 
 class OpMetadataSpec(Model, Resolvable):
-    name: Optional[str] = None
     type: Literal["function", "subprocess"]
+    name: Optional[str] = None
     tags: Optional[dict[str, Any]] = None
     description: Optional[str] = None
     pool: Optional[str] = None
@@ -85,6 +85,19 @@ class ExecutableComponent(Component, Resolvable, Model):
 
     @cached_property
     def resolved_execution(self) -> OpMetadataSpec:
+        if isinstance(self.execution, PipesSubprocessSpec):
+            from pathlib import Path
+
+            name = self.execution.name if self.execution.name else Path(self.execution.path).stem
+
+            return PipesSubprocessSpec(
+                type="subprocess",
+                name=name,
+                path=self.execution.path,
+                tags=self.execution.tags,
+                description=self.execution.description,
+                pool=self.execution.pool,
+            )
         return (
             self.execution
             if isinstance(self.execution, OpMetadataSpec)
@@ -93,10 +106,6 @@ class ExecutableComponent(Component, Resolvable, Model):
 
     @cached_property
     def execute_fn_metadata(self) -> "ExecuteFnMetadata":
-        check.invariant(
-            isinstance(self.resolved_execution, ExecutionSpec),
-            "Pipes subprocess scripts cannot have resources",
-        )
         return ExecuteFnMetadata(check.inst(self.resolved_execution, ExecutionSpec).fn)
 
     @cached_property

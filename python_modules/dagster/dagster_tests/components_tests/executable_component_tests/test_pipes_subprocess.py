@@ -54,7 +54,7 @@ def test_pipes_subprocess_script_with_custom_materialize_result() -> None:
         raw_source = "\n".join(raw_source.split("\n")[1:])
         raw_source = dedent(raw_source)
 
-        execute_path = sandbox.defs_folder_path / "script.py"
+        execute_path = sandbox.defs_folder_path / "op_name.py"
         execute_path.write_text(raw_source)
 
         with sandbox.load(
@@ -63,8 +63,7 @@ def test_pipes_subprocess_script_with_custom_materialize_result() -> None:
                 "attributes": {
                     "execution": {
                         "type": "subprocess",
-                        "name": "op_name",
-                        "path": "script.py",
+                        "path": "op_name.py",
                     },
                     "assets": [
                         {
