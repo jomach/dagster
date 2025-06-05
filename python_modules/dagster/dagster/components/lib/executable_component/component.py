@@ -18,9 +18,6 @@ from dagster._core.execution.context.asset_check_execution_context import AssetC
 from dagster._core.execution.context.asset_execution_context import AssetExecutionContext
 from dagster.components.component.component import Component
 from dagster.components.core.context import ComponentLoadContext
-from dagster.components.lib.executable_component.pipe_subprocess_invoke import (
-    invoke_pipes_subprocess_script,
-)
 from dagster.components.resolved.base import Resolvable
 from dagster.components.resolved.context import ResolutionContext
 from dagster.components.resolved.core_models import ResolvedAssetCheckSpec, ResolvedAssetSpec
@@ -162,6 +159,10 @@ class ExecutableComponent(Component, Resolvable, Model):
         if isinstance(self.resolved_execution, ExecutionSpec):
             return self.resolved_execution.fn(context, **to_pass)
         elif isinstance(self.resolved_execution, PipesSubprocessSpec):
+            from dagster.components.lib.executable_component.subprocess_component import (
+                invoke_pipes_subprocess_script,
+            )
+
             return invoke_pipes_subprocess_script(
                 self,
                 context,
@@ -190,3 +191,6 @@ class ExecuteFnMetadata:
     @cached_property
     def function_params_names(self) -> set[str]:
         return {arg.name for arg in get_function_params(self.execute_fn)}
+
+
+class ExecutableFunctionComponent(ExecutableComponent): ...

@@ -3,21 +3,19 @@ from textwrap import dedent
 
 from dagster._core.definitions.materialize import materialize
 from dagster._core.definitions.metadata.metadata_value import TextMetadataValue
-from dagster.components.lib.executable_component.component import (
-    ExecutableComponent,
-    PipesSubprocessSpec,
-)
+from dagster.components.lib.executable_component.component import PipesSubprocessSpec
+from dagster.components.lib.executable_component.subprocess_component import SubprocessComponent
 from dagster.components.testing import scaffold_defs_sandbox
 
 
 def test_pipes_subprocess_script_hello_world() -> None:
-    with scaffold_defs_sandbox(component_cls=ExecutableComponent) as sandbox:
+    with scaffold_defs_sandbox(component_cls=SubprocessComponent) as sandbox:
         execute_path = sandbox.defs_folder_path / "script.py"
         execute_path.write_text("print('hello world')")
 
         with sandbox.load(
             component_body={
-                "type": "dagster.components.lib.executable_component.component.ExecutableComponent",
+                "type": "dagster.components.lib.executable_component.subprocess_component.SubprocessComponent",
                 "attributes": {
                     "execution": {
                         "type": "subprocess",
@@ -32,7 +30,7 @@ def test_pipes_subprocess_script_hello_world() -> None:
                 },
             }
         ) as (component, defs):
-            assert isinstance(component, ExecutableComponent)
+            assert isinstance(component, SubprocessComponent)
             assert isinstance(component.execution, PipesSubprocessSpec)
             assets_def = defs.get_assets_def("asset")
             result = materialize([assets_def])
@@ -49,7 +47,7 @@ def test_pipes_subprocess_script_with_custom_materialize_result() -> None:
             with open_dagster_pipes() as context:
                 context.report_asset_materialization(metadata={"foo": "bar"})
 
-    with scaffold_defs_sandbox(component_cls=ExecutableComponent) as sandbox:
+    with scaffold_defs_sandbox(component_cls=SubprocessComponent) as sandbox:
         raw_source = inspect.getsource(code_to_copy)
         raw_source = "\n".join(raw_source.split("\n")[1:])
         raw_source = dedent(raw_source)
@@ -59,7 +57,7 @@ def test_pipes_subprocess_script_with_custom_materialize_result() -> None:
 
         with sandbox.load(
             component_body={
-                "type": "dagster.components.lib.executable_component.component.ExecutableComponent",
+                "type": "dagster.components.lib.executable_component.subprocess_component.SubprocessComponent",
                 "attributes": {
                     "execution": {
                         "type": "subprocess",
@@ -73,7 +71,7 @@ def test_pipes_subprocess_script_with_custom_materialize_result() -> None:
                 },
             }
         ) as (component, defs):
-            assert isinstance(component, ExecutableComponent)
+            assert isinstance(component, SubprocessComponent)
             assert isinstance(component.execution, PipesSubprocessSpec)
             assets_def = defs.get_assets_def("asset")
             result = materialize([assets_def])

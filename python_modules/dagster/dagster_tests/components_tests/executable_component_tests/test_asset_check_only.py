@@ -12,7 +12,10 @@ from dagster._core.definitions.resource_annotation import ResourceParam
 from dagster._core.definitions.result import MaterializeResult
 from dagster._core.definitions.unresolved_asset_job_definition import define_asset_job
 from dagster.components.core.context import ComponentLoadContext
-from dagster.components.lib.executable_component.component import ExecutableComponent, ExecutionSpec
+from dagster.components.lib.executable_component.component import (
+    ExecutableFunctionComponent,
+    ExecutionSpec,
+)
 from dagster_shared import check
 
 
@@ -25,7 +28,7 @@ def only_asset_check_execute_fn(context):
 
 
 def test_parse_asset_check_attributes() -> None:
-    component = ExecutableComponent.from_attributes_dict(
+    component = ExecutableFunctionComponent.from_attributes_dict(
         attributes={
             "execution": {
                 "name": "op_name",
@@ -55,7 +58,7 @@ def asset_and_check_execute_fn(context):
 
 
 def test_execute_asset_with_check() -> None:
-    component = ExecutableComponent.from_attributes_dict(
+    component = ExecutableFunctionComponent.from_attributes_dict(
         attributes={
             "execution": {
                 "name": "op_name",
@@ -103,7 +106,7 @@ def asset_check_job(
 
 
 def test_standalone_asset_check() -> None:
-    component = ExecutableComponent.from_attributes_dict(
+    component = ExecutableFunctionComponent.from_attributes_dict(
         attributes={
             "execution": {
                 "name": "op_name",
@@ -145,7 +148,7 @@ def asset_check_execute_fn_with_resources(context, resource_one: ResourceParam[s
 
 
 def test_standalone_asset_check_with_resources() -> None:
-    component = ExecutableComponent.from_attributes_dict(
+    component = ExecutableFunctionComponent.from_attributes_dict(
         attributes={
             "execution": {
                 "name": "op_name",
@@ -182,7 +185,7 @@ def test_standalone_asset_check_with_resources() -> None:
 
 
 def test_trivial_properties() -> None:
-    component_only_assets = ExecutableComponent.from_attributes_dict(
+    component_only_assets = ExecutableFunctionComponent.from_attributes_dict(
         attributes={
             "execution": {
                 "name": "op_name",
@@ -203,7 +206,7 @@ def test_trivial_properties() -> None:
         ComponentLoadContext.for_test()
     ).op.tags == {"op_tag": "op_tag_value"}
 
-    component_only_asset_checks = ExecutableComponent.from_attributes_dict(
+    component_only_asset_checks = ExecutableFunctionComponent.from_attributes_dict(
         attributes={
             "execution": {
                 "name": "op_name",
