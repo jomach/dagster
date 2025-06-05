@@ -1,6 +1,7 @@
 import importlib
 import inspect
 from functools import cached_property
+from pathlib import Path
 from typing import Annotated, Any, Callable, Literal, Optional, Union
 
 from dagster_shared import check
@@ -86,18 +87,8 @@ class ExecutableComponent(Component, Resolvable, Model):
     @cached_property
     def resolved_execution(self) -> OpMetadataSpec:
         if isinstance(self.execution, PipesSubprocessSpec):
-            from pathlib import Path
-
             name = self.execution.name if self.execution.name else Path(self.execution.path).stem
-
-            return PipesSubprocessSpec(
-                type="subprocess",
-                name=name,
-                path=self.execution.path,
-                tags=self.execution.tags,
-                description=self.execution.description,
-                pool=self.execution.pool,
-            )
+            return self.execution.model_copy(update={"name": name})
         return (
             self.execution
             if isinstance(self.execution, OpMetadataSpec)
