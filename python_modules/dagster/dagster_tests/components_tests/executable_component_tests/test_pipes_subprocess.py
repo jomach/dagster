@@ -3,8 +3,10 @@ from textwrap import dedent
 
 from dagster._core.definitions.materialize import materialize
 from dagster._core.definitions.metadata.metadata_value import TextMetadataValue
-from dagster.components.lib.executable_component.component import PipesSubprocessSpec
-from dagster.components.lib.executable_component.subprocess_component import SubprocessComponent
+from dagster.components.lib.executable_component.subprocess_component import (
+    PipesSubprocessSpec,
+    SubprocessComponent,
+)
 from dagster.components.testing import scaffold_defs_sandbox
 
 
@@ -76,6 +78,7 @@ def test_pipes_subprocess_script_with_custom_materialize_result() -> None:
             assets_def = defs.get_assets_def("asset")
             result = materialize([assets_def])
             assert result.success
+            assert assets_def.op.name == "op_name"
             mats = result.asset_materializations_for_node("op_name")
             assert len(mats) == 1
             assert mats[0].metadata == {"foo": TextMetadataValue("bar")}

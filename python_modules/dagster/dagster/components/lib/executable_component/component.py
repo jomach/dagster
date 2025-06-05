@@ -1,19 +1,22 @@
 import importlib
 import inspect
+from abc import abstractmethod
+from collections.abc import Iterable
 from functools import cached_property
-from pathlib import Path
 from typing import Annotated, Any, Callable, Literal, Optional, Union
 
 from dagster_shared import check
 from typing_extensions import TypeAlias
 
 from dagster._core.decorator_utils import get_function_params
+from dagster._core.definitions.asset_check_result import AssetCheckResult
 from dagster._core.definitions.asset_checks import AssetChecksDefinition
 from dagster._core.definitions.assets import AssetsDefinition
 from dagster._core.definitions.decorators.asset_check_decorator import multi_asset_check
 from dagster._core.definitions.decorators.asset_decorator import multi_asset
 from dagster._core.definitions.definitions_class import Definitions
 from dagster._core.definitions.resource_annotation import get_resource_args
+from dagster._core.definitions.result import MaterializeResult
 from dagster._core.execution.context.asset_check_execution_context import AssetCheckExecutionContext
 from dagster._core.execution.context.asset_execution_context import AssetExecutionContext
 from dagster.components.component.component import Component
@@ -59,11 +62,6 @@ class ExecutionSpec(OpMetadataSpec):
     fn: ResolvableCallable
 
 
-class PipesSubprocessSpec(OpMetadataSpec):
-    type: Literal["subprocess"] = "subprocess"
-    path: str
-
-
 class ExecutableComponent(Component, Resolvable, Model):
     """Executable Component represents an executable node in the asset graph.
 
@@ -77,30 +75,23 @@ class ExecutableComponent(Component, Resolvable, Model):
     which can all be expressed as a single ExecutableComponent.
     """
 
-    execution: Union[ExecutionSpec, ResolvableCallable, PipesSubprocessSpec]
     assets: Optional[list[ResolvedAssetSpec]] = None
     checks: Optional[list[ResolvedAssetCheckSpec]] = None
 
-    @cached_property
-    def resolved_execution(self) -> OpMetadataSpec:
-        if isinstance(self.execution, PipesSubprocessSpec):
-            name = self.execution.name if self.execution.name else Path(self.execution.path).stem
-            return self.execution.model_copy(update={"name": name})
-        return (
-            self.execution
-            if isinstance(self.execution, OpMetadataSpec)
-            else ExecutionSpec(name=self.execution.__name__, fn=self.execution)
-        )
+    @property
+    @abstractmethod
+    def op_metadata_spec(self) -> OpMetadataSpec: ...
 
-    @cached_property
-    def execute_fn_metadata(self) -> "ExecuteFnMetadata":
-        return ExecuteFnMetadata(check.inst(self.resolved_execution, ExecutionSpec).fn)
-
-    @cached_property
+    @property
     def resource_keys(self) -> set[str]:
-        if not isinstance(self.resolved_execution, ExecutionSpec):
-            return set()
-        return self.execute_fn_metadata.resource_keys
+        return set()
+
+    @abstractmethod
+    def invoke_execute_fn(
+        self,
+        context: Union[AssetExecutionContext, AssetCheckExecutionContext],
+        component_load_context: ComponentLoadContext,
+    ) -> Iterable[Union[MaterializeResult, AssetCheckResult]]: ...
 
     def build_underlying_assets_def(
         self, component_load_context: ComponentLoadContext
@@ -108,32 +99,36 @@ class ExecutableComponent(Component, Resolvable, Model):
         if self.assets:
 
             @multi_asset(
-                name=self.resolved_execution.name,
-                op_tags=self.resolved_execution.tags,
-                description=self.resolved_execution.description,
+                name=self.op_metadata_spec.name,
+                op_tags=self.op_metadata_spec.tags,
+                description=self.op_metadata_spec.description,
                 specs=self.assets,
                 check_specs=self.checks,
                 required_resource_keys=self.resource_keys,
-                pool=self.resolved_execution.pool,
+                pool=self.op_metadata_spec.pool,
             )
             def _assets_def(context: AssetExecutionContext, **kwargs):
-                return self.invoke_execute_fn(
+                result = self.invoke_execute_fn(
                     context, component_load_context=component_load_context
                 )
+                if isinstance(result, Iterable):
+                    yield from result
+                else:
+                    return result
 
             return _assets_def
         elif self.checks:
 
             @multi_asset_check(
-                name=self.resolved_execution.name,
-                op_tags=self.resolved_execution.tags,
+                name=self.op_metadata_spec.name,
+                op_tags=self.op_metadata_spec.tags,
                 specs=self.checks,
-                description=self.resolved_execution.description,
+                description=self.op_metadata_spec.description,
                 required_resource_keys=self.resource_keys,
-                pool=self.resolved_execution.pool,
+                pool=self.op_metadata_spec.pool,
             )
             def _asset_check_def(context: AssetCheckExecutionContext, **kwargs):
-                return self.invoke_execute_fn(
+                yield from self.invoke_execute_fn(
                     context, component_load_context=component_load_context
                 )
 
@@ -147,30 +142,6 @@ class ExecutableComponent(Component, Resolvable, Model):
             return Definitions(asset_checks=[assets_def])
         else:
             return Definitions(assets=[assets_def])
-
-    def invoke_execute_fn(
-        self,
-        context: Union[AssetExecutionContext, AssetCheckExecutionContext],
-        component_load_context: ComponentLoadContext,
-    ) -> Any:
-        rd = context.resources.original_resource_dict
-        to_pass = {k: v for k, v in rd.items() if k in self.resource_keys}
-        check.invariant(set(to_pass.keys()) == self.resource_keys, "Resource keys mismatch")
-        if isinstance(self.resolved_execution, ExecutionSpec):
-            return self.resolved_execution.fn(context, **to_pass)
-        elif isinstance(self.resolved_execution, PipesSubprocessSpec):
-            from dagster.components.lib.executable_component.subprocess_component import (
-                invoke_pipes_subprocess_script,
-            )
-
-            return invoke_pipes_subprocess_script(
-                self,
-                context,
-                self.resolved_execution.path,
-                component_load_context=component_load_context,
-            )
-        else:
-            check.failed(f"Unknown execution type: {self.resolved_execution}")
 
 
 class ExecuteFnMetadata:
@@ -193,4 +164,39 @@ class ExecuteFnMetadata:
         return {arg.name for arg in get_function_params(self.execute_fn)}
 
 
-class ExecutableFunctionComponent(ExecutableComponent): ...
+class ExecutableFunctionComponent(ExecutableComponent):
+    ## Begin overloads
+    execution: Union[ExecutionSpec, ResolvableCallable]
+
+    @cached_property
+    def op_metadata_spec(self) -> OpMetadataSpec:
+        return (
+            self.execution
+            if isinstance(self.execution, ExecutionSpec)
+            else ExecutionSpec(name=self.execution.__name__, fn=self.execution)
+        )
+
+    @property
+    def resource_keys(self) -> set[str]:
+        return self.execute_fn_metadata.resource_keys
+
+    def invoke_execute_fn(
+        self,
+        context: Union[AssetExecutionContext, AssetCheckExecutionContext],
+        component_load_context: ComponentLoadContext,
+    ) -> Iterable[Union[MaterializeResult, AssetCheckResult]]:
+        rd = context.resources.original_resource_dict
+        to_pass = {k: v for k, v in rd.items() if k in self.resource_keys}
+        check.invariant(set(to_pass.keys()) == self.resource_keys, "Resource keys mismatch")
+        result = self.execute_fn_metadata.execute_fn(context, **to_pass)
+        # this check goes first because result objects are iterable
+        if isinstance(result, (AssetCheckResult, MaterializeResult)):
+            yield result
+        elif isinstance(result, Iterable):
+            yield from result
+
+    ## End overloads
+
+    @cached_property
+    def execute_fn_metadata(self) -> "ExecuteFnMetadata":
+        return ExecuteFnMetadata(check.inst(self.op_metadata_spec, ExecutionSpec).fn)
